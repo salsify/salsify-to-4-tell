@@ -1,0 +1,2 @@
+* The biggest item is to factor out the SalsifyAPI and JSON projects so that
+  they can more easily be reused in other projects.
