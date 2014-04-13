@@ -1,5 +1,8 @@
 <?php
 interface SalsifyJsonStreamingParserListener {
+  public function startDocument();
+  public function endDocument();
+
   public function startAttributes();
   public function attribute($attribute);
   public function endAttributes();

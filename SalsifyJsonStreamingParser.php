@@ -72,10 +72,14 @@ class SalsifyJsonStreamingParser implements JsonStreamingParser_Listener {
     $this->_in_attributes = false;
     $this->_in_attribute_values = false;
     $this->_in_products = false;
+
+    $this->_listener->startDocument();
   }
 
   // JsonStreamingParser_Listener
-  public function end_document() {}
+  public function end_document() {
+    $this->_listener->endDocument();
+  }
 
 
   // JsonStreamingParser_Listener
