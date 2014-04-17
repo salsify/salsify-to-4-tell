@@ -13,12 +13,21 @@ class SalsifyAPI {
   private $_apiKey;
   private $_channelId;
   private $_channelRunId;
+  private $_channelRunDataUrl;
 
 
   public function __construct($apiKey, $channelId) {
     $this->_apiKey = $apiKey;
     $this->_channelId = $channelId;
-    $this->_channelRunId = null;
+  }
+
+
+  // downloads the output file to the given stream
+  public function downloadChannelData($outputStream) {
+    $this->_startSalsifyExportRun();
+    $this->_waitForExportRunToComplete();
+    $this->_downloadData($outputStream);
+    return $this;
   }
 
 
@@ -40,7 +49,7 @@ class SalsifyAPI {
     return $this->_channelRunsBaseUrl();
   }
 
-  private function _channelRunStatusUrl() {
+  private function _channelRunUrl() {
     return $this->_channelRunsBaseUrl() . '/' . $this->_channelRunId;
   }
 
@@ -50,100 +59,71 @@ class SalsifyAPI {
 
   private function _doSalsifyRequest($url, $method = 'GET', $postBody = null) {
     $defaultCurlOptions = array(
-      'CURLOPT_URL' => $url,
-      'CURLOPT_HEADER' => false,
-      'CURLOPT_TIMEOUT' => 60,
-      'CURLOPT_RETURNTRANSFER' => true,
+      CURLOPT_URL => $url . $this->_apiUrlSuffix(),
+      CURLOPT_CUSTOMREQUEST => $method,
+      CURLOPT_HEADER => false,
+      CURLOPT_RETURNTRANSFER => true,
+      CURLOPT_HTTPHEADER, array('Content-Type: application/json'),
 
       // seemed reasonable settings
-      'CURLOPT_FRESH_CONNECT' => true,
-      'CURLOPT_FORBID_REUSE' => true,
+      CURLOPT_TIMEOUT => 60,
+      CURLOPT_FRESH_CONNECT => true,
+      CURLOPT_FORBID_REUSE => true,
     );
 
-    if ($method === 'POST') {
-      $defaultCurlOptions['CURLOPT_POST'] = true;
+    if ($method === 'POST' && is_array($postBody)) {
+      $postBody = json_encode($postBody);
     }
 
     $ch = curl_init($url);
     curl_setopt_array($ch, $defaultCurlOptions);
 
-    // FIXME set headers ('Content-Type for example')
-    // FIXME exec return value?
     $response = curl_exec($ch);
-
+    $httpStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
-    // FIXME parse the JSON in the response
+    if ($response && !empty($response)) {
+      $response = json_decode($response, true);
+    }
     return $response;
   }
 
 
-  // FIXME
   private function _startSalsifyExportRun() {
-    $request = new HttpRequest($this->_get_start_salsify_export_run_url($id), HTTP_METH_POST);
-    $response = $request->send();
-    $response_json = json_decode($response->getBody(), true);
-    if (!$this->_responseValid($response)) {
-      if (array_key_exists('errors', $response_json)) {
-        $error = $resopnse_json['errors'][0];
-      } else {
-        $error = "No details provided by Salsify.";
-      }
-      throw new Exception("Could not start Salsify export: " . var_export($error, true));
-    }
-
-    $id = $response_json['id'];
-    self::_log("Export run started. ID: " . $id);
-    return $id;
+    $response = $this->_doSalsifyRequest($this->_createChannelRunUrl(), 'POST');
+    $this->_channelRunId = $response['id'];
+    return $this;
   }
 
 
-  // FIXME
   // waits until salsify is done preparing the given export, and returns the URL
   // when done. throws an exception if anything funky occurs.
-  private function _wait_for_salsify_to_finish_preparing_export() {
+  private function _waitForExportRunToComplete() {
+    $this->_channelRunDataUrl = null;
+
     do {
       sleep(5);
-      $url = $this->_is_salsify_done_preparing_export($salsify_export_id, $id);
-    } while (!$url);
-    return $url;
+      $exportRun = $this->_doSalsifyRequest($this->_channelRunUrl());
+      $status = $exportRun['status'];
+      if ($status === 'completed') {
+        $this->_channelRunDataUrl = $exportRun['product_export_url'];
+      } elseif ($status === 'failed') {
+        // this would be an internal error in Salsify
+        throw new Exception('Salsify failed to produce an export.');
+      }
+    } while (!$this->_channelRunDataUrl);
+
+    return $this;
   }
 
 
-  // FIXME
-  // checks whether salsify is done preparing the data export with the given id.
-  // return null if not.
-  // return the url of the document if it's done.
-  // throw an Exception if anything strange occurs.
-  private function _is_salsify_done_preparing_export($salsify_export_id, $id) {
-    $export = $this->_get_salsify_export_run($salsify_export_id, $id);
-
-    if (!array_key_exists('status', $export)) {
-      throw new Exception('Malformed document returned from Salsify: ' . var_export($export,true));
-    }
-    $status = $export['status'];
-    if ($status === 'running') {
-      // still going
-      return null;
-    } elseif ($status === 'failed') {
-      // extremely unlikely. this would be an internal error in Salsify
-      throw new Exception('Salsify failed to produce an export for Magento.');
-    } elseif ($status !== 'completed') {
-      throw new Exception('Malformed document returned from Salsify. Unknown status: ' . $export['status']);
-    } elseif (!array_key_exists('url', $export)) {
-      throw new Exception('Malformed document returned from Salsify. No URL returned for successful Salsify export.');
-    }
-
-    $url = $export['url'];
-    if (!$url) {
-      throw new Exception("Processing done but no public URL. Check for errors with Salsify administrator. Export job ID: " . $id);
-    }
-
-    return $url;
+  private function _downloadData($outputStream) {
+    $ch = curl_init($this->_channelRunDataUrl);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 600);
+    curl_setopt($ch, CURLOPT_FILE, $outputStream);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_exec($ch);
+    curl_close($ch);
+    return $this;
   }
-
 }
-
-
-// FIXME remove when done implementing
-$api = new SalsifyAPI(getenv('SALSIFY_API_KEY'), 69);
