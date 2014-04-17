@@ -1,7 +1,5 @@
 <?php
-
-require_once dirname(__FILE__).'/SalsifyJsonStreamingParserListener.php';
-
+require_once dirname(__FILE__).'/lib/Salsify_JsonStreamingParserListener.php';
 
 class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
 
@@ -26,6 +24,8 @@ class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
   private $_categories;
 
 
+  // FIXME change the options to be a mapping instead and then just check for a
+  //       handful of required values. really this could be anything...
   // options: "brand attribute ID", "category attribute ID"
   public function __construct($outputStream, $options) {
     $this->_stream = $outputStream;
@@ -208,37 +208,5 @@ class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
   public function endProducts() {
     $this->_write('</Products>');
   }
-
 }
-
-// FIXME remove
-require_once dirname(__FILE__).'/SalsifyJsonStreamingParser.php';
-
-$testfile = dirname(__FILE__).'/tmp/test.json';
-$outputfile = dirname(__FILE__).'/tmp/4Tell-TEST.xml';
-
-$options = array(
-  'brand attribute ID' => 'Brand',
-  'category attribute ID' => 'Category',
-  'product page URL attribute ID' => 'Product Link',
-  'image attribute ID' => 'Image',
-  'part number attribute ID' => 'UPC'
-);
-
-$stream = fopen($testfile, 'r');
-try {
-  if (file_exists($outputfile)) {
-    unlink($outputfile);
-  }
-  $ostream = fopen($outputfile, 'w');
-  $adapter = new Salsify4TellAdapter($ostream, $options);
-  $parser = new SalsifyJsonStreamingParser($stream, $adapter);
-  $parser->parse();
-  fclose($ostream);
-  fclose($stream);
-} catch (Exception $e) {
-  fclose($stream);
-  throw $e;
-}
-
 ?>

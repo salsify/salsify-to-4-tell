@@ -1,5 +1,5 @@
 <?php
-interface SalsifyJsonStreamingParserListener {
+interface Salsify_JsonStreamingParserListener {
   public function startDocument();
   public function endDocument();
 

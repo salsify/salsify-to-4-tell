@@ -1,13 +1,12 @@
 <?php
-require_once dirname(__FILE__).'/lib/JsonStreamingParser/Listener.php';
-require_once dirname(__FILE__).'/lib/JsonStreamingParser/Parser.php';
-
+require_once dirname(__FILE__).'/../JsonStreamingParser/Listener.php';
+require_once dirname(__FILE__).'/../JsonStreamingParser/Parser.php';
 
 // Streams data from a Salsify JSON export, sending events to a listener.
 // Objects sent to the listener are PHP arrays using the exact info given in the
 // JSON export; it's up to the listener to provide more structure or do anything
 // else with the data.
-class SalsifyJsonStreamingParser implements JsonStreamingParser_Listener {
+class Salsify_JsonStreamingParser implements JsonStreamingParser_Listener {
 
   // generic JSON streaming parser that does most of the work.
   private $_parser;

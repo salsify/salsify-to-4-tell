@@ -1,12 +1,11 @@
 <?php
 
-
 /**
  * This class is the gateway to Salsify. It should be the only class that knows
  * anything about Salsify's API (though other classes know about the Salsify
  * JSON file format).
  */
-class SalsifyAPI {
+class Salsify_API {
 
   const API_BASE_URL = 'https://app.salsify.com/api/';
 
@@ -26,7 +25,7 @@ class SalsifyAPI {
   public function downloadChannelData($outputStream) {
     $this->_startSalsifyExportRun();
     $this->_waitForExportRunToComplete();
-    $this->_downloadData($outputStream);
+    self::downloadData($this->_channelRunDataUrl, $outputStream);
     return $this;
   }
 
@@ -117,13 +116,14 @@ class SalsifyAPI {
   }
 
 
-  private function _downloadData($outputStream) {
-    $ch = curl_init($this->_channelRunDataUrl);
+  // helper method for downloading things from Salsify
+  public static function downloadData($url, $outputStream) {
+    $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_TIMEOUT, 600);
     curl_setopt($ch, CURLOPT_FILE, $outputStream);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_exec($ch);
     curl_close($ch);
-    return $this;
+    return $outputStream;
   }
 }
