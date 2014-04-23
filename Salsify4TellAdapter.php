@@ -1,19 +1,21 @@
 <?php
-require_once dirname(__FILE__).'/lib/Salsify_JsonStreamingParserListener.php';
+require_once dirname(__FILE__).'/lib/Salsify/JsonStreamingParserListener.php';
 
-class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
+class Salsify4TellAdapter implements Salsify_JsonStreamingParserListener {
+
+  const FOURTELL_API = 'http://stage.4-tell.net/Boost2.0/upload/xml/stream';
 
   // stream to which XML will be written
   private $_stream;
 
-
-  private $_externalIdAttributeId;
-  private $_nameAttributeId;
+  // cached configuration read from the file
+  private $_config;
   private $_brandAttributeId;
   private $_categoryAttributeId;
-  private $_productUrlAttributeId;
-  private $_imageAttributeId;
-  private $_partNumberAttributeId;
+
+  // cache these values when parsing the attributes section of the Salsify export
+  private $_externalIdAttributeId;
+  private $_nameAttributeId;
 
   // hash of ID -> name
   private $_brandAttributeValues;
@@ -24,25 +26,44 @@ class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
   private $_categories;
 
 
-  // FIXME change the options to be a mapping instead and then just check for a
-  //       handful of required values. really this could be anything...
-  // options: "brand attribute ID", "category attribute ID"
-  public function __construct($outputStream, $options) {
+  public function __construct($configFile, $outputStream) {
+    $this->_setConfigFile($configFile);
     $this->_stream = $outputStream;
+  }
 
-    if (!array_key_exists('brand attribute ID', $options) ||
-        !array_key_exists('category attribute ID', $options) ||
-        !array_key_exists('product page URL attribute ID', $options) ||
-        !array_key_exists('image attribute ID', $options) ||
-        !array_key_exists('part number attribute ID', $options)) {
+  // ensures that the configuration file is properly formatted (though not
+  // exhaustively; e.g. it doesn't check that all the Category and Brand items
+  // have complete information).
+  private function _setConfigFile($configFile) {
+    if (!file_exists($configFile)) {
+      throw new Exception("Config file does not exist: " . $configFile);
+    }
+
+    $this->_config = json_decode(file_get_contents($configFile), true);
+    if ($this->_config === NULL) {
+      throw new Exception("Could not read config file. Not proper JSON: " . $configFile);
+    }
+
+    if (!array_key_exists('Brand Attribute ID', $this->_config['Attributes']) ||
+        !array_key_exists('Category Attribute ID', $this->_config['Attributes'])) {
       throw new Exception("Missing one or more required options: brand attribute ID, category attribute ID");
     }
 
-    $this->_brandAttributeId = $options['brand attribute ID'];
-    $this->_categoryAttributeId = $options['category attribute ID'];
-    $this->_productUrlAttributeId = $options['product page URL attribute ID'];
-    $this->_imageAttributeId = $options['image attribute ID'];
-    $this->_partNumberAttributeId = $options['part number attribute ID'];
+    $this->_brandAttributeId = $this->_config['Attributes']['Brand Attribute ID'];
+    $this->_categoryAttributeId = $this->_config['Attributes']['Category Attribute ID'];
+
+    if (array_key_exists('Product ID', $this->_config['Attributes'])) {
+      $this->_externalIdAttributeId = $this->_config['Attributes']['Product ID'];
+    }
+  }
+
+  // for the given Salsify property return if a mapping exists to an output XML
+  // key
+  private function _elementForProperty($property) {
+    if (!array_key_exists($property, $this->_config['Attributes']['Mappings'])) {
+      return null;
+    }
+    return $this->_config['Attributes']['Mappings'][$property];
   }
 
   private function _write($text) {
@@ -50,7 +71,7 @@ class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
   }
 
   private function _prepareTag($tagname, $value) {
-    return '<' . $tagname . '>' . $value . '</' . $tagname . '>';
+    return '<' . $tagname . '>' . htmlspecialchars($value) . '</' . $tagname . '>';
   }
 
   // SalsifyJsonStreamingParserListener
@@ -72,7 +93,10 @@ class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
   // SalsifyJsonStreamingParserListener
   public function attribute($attribute) {
     if ($this->_isIdAttribute($attribute)) {
-      $this->_externalIdAttributeId = $attribute['salsify:id'];
+      if (!$this->_externalIdAttributeId) {
+        // may have been set by config
+        $this->_externalIdAttributeId = $attribute['salsify:id'];
+      }
     } elseif ($this->_isNameAttribute($attribute)) {
       $this->_nameAttributeId = $attribute['salsify:id'];
     } elseif ($this->_isBrandAttribute($attribute) && !$this->_isEnumeratedAttribute($attribute)) {
@@ -111,6 +135,7 @@ class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
   // SalsifyJsonStreamingParserListener
   public function attributeValue($attributeValue) {
     if ($this->_isBrandAttributeValue($attributeValue)) {
+      // FIXME need to use metadata to get the ID that we're sending to 4Tell
       $this->_brandAttributeValues[$attributeValue['salsify:id']] = $attributeValue['salsify:name'];
     } elseif ($this->_isCategoryAttributeValue($attributeValue)) {
       $id = $attributeValue['salsify:id'];
@@ -135,23 +160,39 @@ class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
 
   private function _writeBrands() {
     $this->_write('<Brands>');
-    foreach($this->_brandAttributeValues as $brandId => $brandName) {
+
+    // FIXME this is how it should work (that is, getting the metadata from Salsify)
+    //       but right now we're getting it from a config file since the data in
+    //       Salsify is a little messed up
+    // foreach($this->_brandAttributeValues as $brandId => $brandName) {
+    //   $brandXml = '<Brand>';
+    //   $brandXml .= $this->_prepareTag('ExternalId', $brandId);
+    //   $brandXml .= $this->_prepareTag('Name', $brandName);
+    //   $brandXml .= '</Brand>';
+    //   $this->_write($brandXml);
+    // }
+
+    foreach ($this->_config["Brands"] as $brand) {
       $brandXml = '<Brand>';
-      $brandXml .= $this->_prepareTag('Brand', $brandId);
-      $brandXml .= $this->_prepareTag('Name', $brandName);
+      $brandXml .= $this->_prepareTag('ExternalId', $brand['id']);
+      $brandXml .= $this->_prepareTag('Name', $brand['name']);
       $brandXml .= '</Brand>';
       $this->_write($brandXml);
     }
+
     $this->_write('</Brands>');
   }
 
   private function _writeCategories() {
+    // TODO ideally we'd get the category metadata such as the URL from the
+    //      category itself, but we can't right now since we don't allow metadata
+    //      on enumerated attribute values in Salsify yet.
+
     $this->_write('<Categories>');
     foreach($this->_categories as $categoryId => $category) {
       $categoryXml = '<Category>';
       $categoryXml .= $this->_prepareTag('ExternalId', $categoryId);
-      $categoryXml .= $this->_prepareTag('Nmae', $category['name']);
-      // FIXME need to add CategoryPageUrl from metadata on the category itself
+      $categoryXml .= $this->_prepareTag('Name', $category['name']);
       $categoryXml .= '</Category>';
       $this->_write($categoryXml);
     }
@@ -165,18 +206,28 @@ class Salsify4TellAdapter implements SalsifyJsonStreamingParserListener {
 
   // SalsifyJsonStreamingParserListener
   public function product($product) {
+    // FIXME update
+
     $productXml = '<Product>';
     $productXml .= $this->_prepareTag('ExternalId', $this->_productValueForProperty($product, $this->_externalIdAttributeId));
     $productXml .= $this->_prepareTag('Name', $this->_productValueForProperty($product, $this->_nameAttributeId));
-    $productXml .= $this->_prepareTag('CategoryExternalId', $this->_productValueForProperty($product, $this->_categoryAttributeId));
-    $productXml .= $this->_prepareTag('ProductPageUrl', $this->_productValueForProperty($product, $this->_productUrlAttributeId));
-    $productXml .= $this->_prepareTag('ImageUrl', $this->_productImageUrl($product));
-    
-    $productXml .= '<ManufacturerPartNumbers>';
-    $productXml .= $this->_prepareTag('ManufacturerPartNumber', $this->_productValueForProperty($product, $this->_partNumberAttributeId));
-    $productXml .= '</ManufacturerPartNumbers>';    
 
-    $productXml .= $this->_prepareTag('BrandExternalId', $this->_productValueForProperty($product, $this->_brandAttributeId));
+    foreach (array_keys($product) as $productProperty) {
+      $element = $this->_elementForProperty($productProperty);
+      if ($element) {
+        $productXml .= $this->_prepareTag($element, $this->_productValueForProperty($product, $productProperty));
+      }
+    }
+
+    // $productXml .= $this->_prepareTag('CategoryExternalId', $this->_productValueForProperty($product, $this->_categoryAttributeId));
+    // $productXml .= $this->_prepareTag('ProductPageUrl', $this->_productValueForProperty($product, $this->_productUrlAttributeId));
+    // $productXml .= $this->_prepareTag('ImageUrl', $this->_productImageUrl($product));
+    
+    // $productXml .= '<ManufacturerPartNumbers>';
+    // $productXml .= $this->_prepareTag('ManufacturerPartNumber', $this->_productValueForProperty($product, $this->_partNumberAttributeId));
+    // $productXml .= '</ManufacturerPartNumbers>';    
+
+    // $productXml .= $this->_prepareTag('BrandExternalId', $this->_productValueForProperty($product, $this->_brandAttributeId));
     $productXml .= '</Product>';
 
     $this->_write($productXml);

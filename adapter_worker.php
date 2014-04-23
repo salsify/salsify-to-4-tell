@@ -23,7 +23,8 @@ $adapter = new Salsify4TellAdapter($fourtellFile, $options);
 $parser = new Salsify_JsonStreamingParser($salsifyFile, $adapter);
 $parser->parse();
 
-// FIXME upload the 4Tell file somewhere...
+// FIXME upload the 4Tell file
+// http://live.4-tell.net/Boost2.0/upload/xml/stream
 fseek($fourtellFile, 0);
 $text = file_get_contents($fourtellFile);
 echo "\n\n" . $text . "\n\n";
