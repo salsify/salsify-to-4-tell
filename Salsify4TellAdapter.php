@@ -3,7 +3,7 @@ require_once dirname(__FILE__).'/lib/Salsify/JsonStreamingParserListener.php';
 
 class Salsify4TellAdapter implements Salsify_JsonStreamingParserListener {
 
-  const FOURTELL_API = 'http://stage.4-tell.net/Boost2.0/upload/xml/stream';
+  const FOURTELL_API = 'http://stage.4-tell.net/Boost2.0/upload/stream';
 
   // stream to which XML will be written
   private $_stream;
@@ -15,10 +15,12 @@ class Salsify4TellAdapter implements Salsify_JsonStreamingParserListener {
   private $_config;
   private $_brandAttributeId;
   private $_categoryAttributeId;
+  private $_imageAttributeId;
 
   // cache these values when parsing the attributes section of the Salsify export
   private $_externalIdAttributeId;
   private $_nameAttributeId;
+  private $_hasInventoryMapping;
 
   // hash of ID -> name
   private $_brandAttributeValues;
@@ -84,6 +86,12 @@ class Salsify4TellAdapter implements Salsify_JsonStreamingParserListener {
     if (array_key_exists('Product ID', $this->_config['Attributes'])) {
       $this->_externalIdAttributeId = $this->_config['Attributes']['Product ID'];
     }
+
+    if (array_key_exists('Image Attribute ID', $this->_config['Attributes'])) {
+      $this->_imageAttributeId = $this->_config['Attributes']['Image Attribute ID'];
+    }
+
+    $this->_hasInventoryMapping = in_array('Inventory',array_values($this->_config['Attributes']['Mappings']));
   }
 
   // for the given Salsify property return if a mapping exists to an output XML
@@ -111,9 +119,9 @@ class Salsify4TellAdapter implements Salsify_JsonStreamingParserListener {
 
     // this first line is required by the feed
     $this->_write($this->_alias . "\t" .
-                  "SalsifyFeed-" . $dateString . ".xml" . "\t" .
+                  "SalsifyFeed.xml" . "\t" .
                   "create" . "\t" .
-                  "true");
+                  "false");
 
     $this->_write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
     $this->_write('<Feed extractDate="' . $dateString . '">');
@@ -252,6 +260,16 @@ class Salsify4TellAdapter implements Salsify_JsonStreamingParserListener {
     $productXml .= $this->_prepareTag('ExternalId', $this->_productValueForProperty($product, $this->_externalIdAttributeId));
     $productXml .= $this->_prepareTag('Name', $this->_productValueForProperty($product, $this->_nameAttributeId));
 
+    $imageUrl = $this->_productImageUrl($product);
+    if ($imageUrl) {
+      $productXml .= $this->_prepareTag('ImageUrl', $imageUrl);
+    }
+
+    // 4-Tell requires that inventory exist
+    if (!$this->_hasInventoryMapping) {
+      $productXml .= $this->_prepareTag('Inventory', '1');
+    }
+
     if (array_key_exists($this->_categoryAttributeId, $product)) {
       $productXml .= '<CategoryExternalIds>';
 
@@ -270,7 +288,10 @@ class Salsify4TellAdapter implements Salsify_JsonStreamingParserListener {
     foreach (array_keys($product) as $productProperty) {
       $element = $this->_elementForProperty($productProperty);
       if ($element) {
-        $productXml .= $this->_prepareTag($element, $this->_productValueForProperty($product, $productProperty));
+        $value = $this->_productValueForProperty($product, $productProperty);
+        if ($value) {
+          $productXml .= $this->_prepareTag($element, $value);
+        }
       }
     }
     $productXml .= '</Product>';
@@ -313,13 +334,22 @@ class Salsify4TellAdapter implements Salsify_JsonStreamingParserListener {
   }
 
   private function _productImageUrl($product) {
-    $imageId = $this->_productValueForProperty($product, $this->_imageAttributeId);
-    foreach ($product['salsify:digital_assets'] as $digitalAsset) {
-      if ($digitalAsset['salsify:id'] === $imageId) {
-        return $digitalAsset['salsify:url'];
-      }
+    if (!array_key_exists('salsify:digital_assets', $product)) {
+      return null;
     }
-    return null;
+
+    if ($this->_imageAttributeId) {
+      $imageId = $this->_productValueForProperty($product, $this->_imageAttributeId);
+      foreach ($product['salsify:digital_assets'] as $digitalAsset) {
+        if ($digitalAsset['salsify:id'] === $imageId) {
+          return $digitalAsset['salsify:url'];
+        }
+      }
+      return null;
+    } else {
+      // default to the first digital asset
+      return $product['salsify:digital_assets'][0]['salsify:url'];
+    }
   }
 
   // SalsifyJsonStreamingParserListener
