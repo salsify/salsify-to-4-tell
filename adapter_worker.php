@@ -11,25 +11,16 @@ $salsifyFile = tmpfile();
 Salsify_API::downloadData($dataUrl, $salsifyFile);
 fseek($salsifyFile, 0);
 
-$options = array(
-  'brand attribute ID' => 'Brand',
-  'category attribute ID' => 'Category',
-  'product page URL attribute ID' => 'Product Link',
-  'image attribute ID' => 'Image',
-  'part number attribute ID' => 'UPC'
-);
 $fourtellFile = tmpfile();
-$adapter = new Salsify4TellAdapter($fourtellFile, $options);
+$adapter = new Salsify4TellAdapter($fourtellFile, $options, $payload('alias'));
 $parser = new Salsify_JsonStreamingParser($salsifyFile, $adapter);
 $parser->parse();
+fclose($salsifyFile);
 
-// FIXME upload the 4Tell file
-// http://live.4-tell.net/Boost2.0/upload/xml/stream
 fseek($fourtellFile, 0);
-$text = file_get_contents($fourtellFile);
-echo "\n\n" . $text . "\n\n";
+$adapter->uploadTo4Tell($fourtellFile);
 
 fclose($fourtellFile);
 
-fclose($salsifyFile);
+
 ?>
