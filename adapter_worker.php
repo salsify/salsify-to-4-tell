@@ -1,6 +1,6 @@
 <?php
-require_once dirname(__FILE__).'/lib/Salsify_API.php';
-require_once dirname(__FILE__).'/lib/Salsify_JsonStreamingParser.php';
+require_once dirname(__FILE__).'/lib/Salsify/API.php';
+require_once dirname(__FILE__).'/lib/Salsify/JsonStreamingParser.php';
 
 require_once dirname(__FILE__).'/Salsify4TellAdapter.php';
 
