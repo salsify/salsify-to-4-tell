@@ -5,14 +5,14 @@ require_once dirname(__FILE__).'/lib/Salsify/JsonStreamingParser.php';
 require_once dirname(__FILE__).'/Salsify4TellAdapter.php';
 
 $payload = getPayload();
-$dataUrl = $payload('url');
+$dataUrl = $payload['url'];
 
 $salsifyFile = tmpfile();
 Salsify_API::downloadData($dataUrl, $salsifyFile);
 fseek($salsifyFile, 0);
 
 $fourtellFile = tmpfile();
-$adapter = new Salsify4TellAdapter($fourtellFile, $options, $payload('alias'));
+$adapter = new Salsify4TellAdapter($fourtellFile, $options, $payload['alias']);
 $parser = new Salsify_JsonStreamingParser($salsifyFile, $adapter);
 $parser->parse();
 fclose($salsifyFile);
