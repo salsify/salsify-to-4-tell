@@ -3,3 +3,4 @@ exec "adapter_worker.php"
 
 dir "lib"
 file "Salsify4TellAdapter.php"
+file "config.json"
